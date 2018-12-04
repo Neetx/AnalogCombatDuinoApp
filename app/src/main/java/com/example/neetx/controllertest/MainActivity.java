@@ -21,6 +21,7 @@ import java.net.SocketAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -212,44 +213,9 @@ class Sender {
     }
 
     void sendCommand(Double angle, Double radius){
-        String str = "";
-        if(angle>=45 && angle<=135){
-            //Todo: UP
-            str="On";
-            if(!str.equals(lastcommand)){
-                Log.d("SIGNAL", "STOP DIFFERENT COMMAND");
-                new SenderTask("STOP", socket, sockaddr).execute();
-            }
-            lastcommand=str;
-        }else if(angle<45 && angle>-45){
-            //Todo: RIGHT
-            str="Right";
-            if(!str.equals(lastcommand)){
-                Log.d("SIGNAL", "STOP DIFFERENT COMMAND");
-                new SenderTask("STOP", socket, sockaddr).execute();
-            }
-            lastcommand=str;
-        }else if(angle>135 || angle<-135){
-            //Todo: LEFT
-            str="Left";
-            if(!str.equals(lastcommand)){
-                Log.d("SIGNAL", "STOP DIFFERENT COMMAND");
-                new SenderTask("STOP", socket, sockaddr).execute();
-            }
-            lastcommand=str;
-        }else if(angle>=-135 && angle<=-45){
-            //Todo: BEHIND
-            str="Behind";
-            if(!str.equals(lastcommand)){
-                Log.d("SIGNAL", "STOP DIFFERENT COMMAND");
-                new SenderTask("STOP", socket, sockaddr).execute();
-            }
-            lastcommand=str;
-        }
-        if(!str.equals("")){
-            Log.d("SIGNAL", str);
-            new SenderTask(str, socket, sockaddr).execute();
-        }
+        String str = "R"+String.format(Locale.getDefault(),"%.2f", radius)+"A"+String.format(Locale.getDefault(),"%.2f", angle);
+        Log.d("str",str);
+        new SenderTask(str, socket, sockaddr).execute();
     }
 }
 
