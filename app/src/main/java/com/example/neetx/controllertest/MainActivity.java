@@ -1,34 +1,44 @@
 package com.example.neetx.controllertest;
-
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.os.AsyncTask;
-import android.os.Handler;
 import android.support.v4.view.MotionEventCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
-
+import android.widget.Toast;
+import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketAddress;
+import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
+
 
 public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        //setContentView(R.layout.activity_main);
         setContentView(new MyView(this));
+        ((MyApplication) this.getApplication()).setFinished(true);
+        ((MyApplication) this.getApplication()).setChance(0);
     }
 
     public class MyView extends View
@@ -37,68 +47,128 @@ public class MainActivity extends AppCompatActivity {
         final Socket socket = new Socket();
         Sender senderObj = new Sender(sockaddr, socket);
         Paint paint = null;
+        private Context _context;
+
         Circle controller = new Circle();
         Circle shooter = new Circle();
+        Circle analog = new Circle();
+        Circle check = new Circle();
+
         List<Boolean> events = new ArrayList<Boolean>();
+        long time = System.currentTimeMillis();
+
+        public Canvas mcanvas = new Canvas();
+        private float mPivotX = (float) analog.getCenterX();
+        private float mPivotY = (float) analog.getCenterY();
+
+        private Boolean start = true;
 
         public MyView(Context context)
         {
             super(context);
             paint = new Paint();
+            this._context = context;
+        }
+
+        public void myDrawCircle(int x, int y) {
+            this.mPivotX = x;
+            this.mPivotY = y;
+            invalidate();
         }
 
         @Override
         protected void onDraw(Canvas canvas)
         {
-            super.onDraw(canvas);
+            mcanvas = canvas;
+            super.onDraw(mcanvas);
             int x = getWidth();
             int y = getHeight();
-            controller.setRadius(getWidth()/3);
-            shooter.setRadius(getWidth()/6);
+            controller.setRadius(y/2);
+            shooter.setRadius(y/6);
+            analog.setRadius(controller.getRadius()/6);
+            check.setRadius(y/10);
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(Color.DKGRAY);
-            canvas.drawPaint(paint);
-            // Use Color.parseColor to define HTML colors
+            mcanvas.drawPaint(paint);
+
             paint.setColor(Color.parseColor("#CD5C5C"));
 
-            controller.setCenterX(x/2);
-            controller.setCenterY(y/4);
+            controller.setCenterX((x-(x/4)));
+            controller.setCenterY(y/2);
 
-            shooter.setCenterX(x/2);
-            shooter.setCenterY(y-(y/3));
+            shooter.setCenterX(x/4);
+            shooter.setCenterY(y/2);
 
-            canvas.drawCircle((float)controller.getCenterX(), (float)controller.getCenterY(), controller.getRadius(), paint);
-            canvas.drawCircle((float)shooter.getCenterX(),(float) shooter.getCenterY(), shooter.getRadius(), paint);
+            analog.setCenterX(controller.getCenterX());
+            analog.setCenterY(controller.getCenterY());
+
+            check.setCenterX(x/11);
+            check.setCenterY(y/7);
+
+            mcanvas.drawCircle((float)controller.getCenterX(), (float)controller.getCenterY(), (float) controller.getRadius(), paint);
+            mcanvas.drawCircle((float)shooter.getCenterX(),(float) shooter.getCenterY(), (float)shooter.getRadius(), paint);
+            paint.setColor((Color.BLUE));
+            mcanvas.drawCircle((float)check.getCenterX(), (float) check.getCenterY(), (float) check.getRadius(), paint);
+            paint.setColor(Color.rgb(87,87,87) );
+            if(start){
+                mPivotX = (float) analog.getCenterX();
+                mPivotY = (float) analog.getCenterY();
+                start = false;
+            }
+            mcanvas.drawCircle(mPivotX, mPivotY, (float)analog.getRadius(), paint);
+            paint.setColor(Color.WHITE);
+            paint.setTextSize(50);
+            mcanvas.drawText("Shoot", (float) shooter.getCenterX()- (float) shooter.getRadius()/2, (float) shooter.getCenterY()+25, paint);
+            paint.setTextSize(35);
+            mcanvas.drawText("Check", (float) check.getCenterX()- (float) check.getRadius()/2, (float) check.getCenterY()+15, paint);
         }
 
         @Override
         public boolean onTouchEvent(MotionEvent event) {
 
+            Log.i("TIME", Long.toString(time));
+
             int action = MotionEventCompat.getActionMasked(event);
             int x = (int) event.getX();
             int y = (int) event.getY();
-            double distance;
-            Log.d("DOWN ACTION","EVENT");
+
+            Log.i("DOWN ACTION","EVENT");
 
             switch (action) {
                 case (MotionEvent.ACTION_DOWN):
                     if(controller.checkDistance(x, y)){
                         senderObj.sendCommand(controller.getDegrees(x,y), controller.getDistance(x,y));
+                        this.myDrawCircle(x,y);
                     }else if(shooter.checkDistance(x, y)) {
-                        Log.d("DOWN_shooter", "SHOOT SIGNAL");
+                        Log.i("DOWN_shooter", "SHOOT SIGNAL");
                         senderObj.sendShoot();
                     }
                     return true;
                 case (MotionEvent.ACTION_MOVE):
                     if(controller.checkDistance(x, y)){
-                        events.add(true);
-                        senderObj.sendCommand(controller.getDegrees(x,y), controller.getDistance(x,y));
+                        this.myDrawCircle(x,y);
+                        if(System.currentTimeMillis() >= time+200) {
+                            events.add(true);
+                            senderObj.sendCommand(controller.getDegrees(x, y), controller.getDistance(x, y));
+                            Log.i("TIME", "SENDED");
+                            time = System.currentTimeMillis();
+                        }
                     }else if(shooter.checkDistance(x, y)) {
                         events.add(true);
                         senderObj.sendShoot();
+                    } else if(check.checkDistance(x, y)){
+                        Log.i("VARIABLE", String.valueOf(((MyApplication) _context.getApplicationContext()).getFinished()));
+                        if(((MyApplication) _context.getApplicationContext()).getFinished() || ((MyApplication) _context.getApplicationContext()).getChance() >= 1) {
+                            ((MyApplication)_context.getApplicationContext()).setFinished(false);
+                            ((MyApplication)_context.getApplicationContext()).setDelay(System.currentTimeMillis());
+                            senderObj.sendCheck(this._context);
+                        }else{
+                            Log.i("RESPONSE", "BLOCKED");
+                        }
                     } else {
                         if(events.contains(true)){
-                            Log.d("SIGNAL","STOP EXCEPTION");
+                            Log.i("SIGNAL","STOP EXCEPTION");
+                            this.myDrawCircle((int) controller.getCenterX(), (int) controller.getCenterY());
                             senderObj.sendStop();
                             events.clear();
                         }
@@ -107,9 +177,10 @@ public class MainActivity extends AppCompatActivity {
                 case (MotionEvent.ACTION_UP):
                     if(controller.checkDistance(x, y)){
                         senderObj.sendStop();
-                        Log.d("SIGNAL","STOP SIGNAL");
+                        this.myDrawCircle((int) controller.getCenterX(),(int) controller.getCenterY());
+                        Log.i("SIGNAL","STOP SIGNAL");
                     }else if(shooter.checkDistance(x, y)) {
-                        Log.d("UP_shooter", "SHOOT SIGNAL");
+                        Log.i("UP_shooter", "SHOOT SIGNAL");
                     }
                     return true;
                 default:
@@ -122,31 +193,31 @@ public class MainActivity extends AppCompatActivity {
 class Circle{
 
     private Point center = new Point();
-    private int radius;
+    private double radius;
 
     Circle(){};
 
-    Circle(int x, int y, int radius){
+    Circle(double x, double y, double radius){
         this.center.setX(x);
         this.center.setY(y);
         this.radius = radius;
     }
 
-    public void setRadius(int radius){
+    public void setRadius(double radius){
         this.radius = radius;
     }
-    public int getRadius(){
+    public double getRadius(){
         return this.radius;
     }
 
-    public void setCenterX(int x){
+    public void setCenterX(double x){
         this.center.setX(x);
     }
     public double getCenterX(){
         return this.center.getX();
     }
 
-    public void setCenterY(int y){
+    public void setCenterY(double y){
         this.center.setY(y);
     }
     public double getCenterY(){
@@ -157,13 +228,16 @@ class Circle{
 
         double dx = Math.abs(x - this.center.getX());
         double dy = Math.abs(y - this.center.getY());
+        Log.i("CHECK dx",Double.toString(dx));
+        Log.i("CHECK dy",Double.toString(dy));
+        Log.i("CHECK radius", Double.toString(radius));
+        Log.i("CHECK dist", Double.toString(getDistance(x,y)));
 
-        if (dx > this.radius) {
-            return false;
-        } else if (dy > this.radius) {
-            return false;
-        } else {
+        if (this.radius >= getDistance(x,y)){
+            Log.i("CHECK","OK");
             return true;
+        } else {
+            return false;
         }
     }
 
@@ -198,62 +272,50 @@ class Point{
 class Sender {
     private SocketAddress sockaddr;
     private Socket socket;
-    private String lastcommand ="";
 
     Sender(SocketAddress sockaddr, Socket socket) {
         this.sockaddr = sockaddr;
-        this.socket = socket;
+        this.socket = socket;;
     }
 
-    void sendShoot(){ new SenderTask("Shoot", socket, sockaddr).execute();}
+    void sendShoot(){
+
+        new SenderTask("Shoot", socket, sockaddr).execute();
+    }
 
     void sendStop(){
         new SenderTask("STOP", socket, sockaddr).execute();
     }
 
+    void sendCheck(Context _context){
+        try {
+            new SenderTask("Check", socket, sockaddr).execute().get(1000, java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (ExecutionException e) {
+            e.printStackTrace();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } catch (TimeoutException e) {
+            e.printStackTrace();
+        }
+       // try {
+            new ReaderTask(_context, socket, sockaddr).execute();//.get(3000, TimeUnit.MILLISECONDS);
+     /*   } catch (ExecutionException e) {
+            e.printStackTrace();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } catch (TimeoutException e) {
+            e.printStackTrace();
+        }*/
+    }
+
     void sendCommand(Double angle, Double radius){
-        String str = "";
-        if(angle>=45 && angle<=135){
-            //Todo: UP
-            str="On";
-            if(!str.equals(lastcommand)){
-                Log.d("SIGNAL", "STOP DIFFERENT COMMAND");
-                new SenderTask("STOP", socket, sockaddr).execute();
-            }
-            lastcommand=str;
-        }else if(angle<45 && angle>-45){
-            //Todo: RIGHT
-            str="Right";
-            if(!str.equals(lastcommand)){
-                Log.d("SIGNAL", "STOP DIFFERENT COMMAND");
-                new SenderTask("STOP", socket, sockaddr).execute();
-            }
-            lastcommand=str;
-        }else if(angle>135 || angle<-135){
-            //Todo: LEFT
-            str="Left";
-            if(!str.equals(lastcommand)){
-                Log.d("SIGNAL", "STOP DIFFERENT COMMAND");
-                new SenderTask("STOP", socket, sockaddr).execute();
-            }
-            lastcommand=str;
-        }else if(angle>=-135 && angle<=-45){
-            //Todo: BEHIND
-            str="Behind";
-            if(!str.equals(lastcommand)){
-                Log.d("SIGNAL", "STOP DIFFERENT COMMAND");
-                new SenderTask("STOP", socket, sockaddr).execute();
-            }
-            lastcommand=str;
-        }
-        if(!str.equals("")){
-            Log.d("SIGNAL", str);
-            new SenderTask(str, socket, sockaddr).execute();
-        }
+        String str = "R"+String.format(Locale.getDefault(),"%.2f", radius)+"A"+String.format(Locale.getDefault(),"%.2f", angle);
+        Log.i("str",str);
+        new SenderTask(str, socket, sockaddr).execute();
     }
 }
 
-class SenderTask extends AsyncTask<String, Void, Void> {
+class SenderTask extends AsyncTask<String, Void, String> {
     String param;
     Socket socket;
     SocketAddress sockaddr;
@@ -264,10 +326,17 @@ class SenderTask extends AsyncTask<String, Void, Void> {
         this.sockaddr = sockaddr;
     }
     @Override
-    protected Void doInBackground(String... params) {
+    protected String doInBackground(String... params) {
+        Log.i("RESPONSE","STO QUA");
+        String response = "";
         try {
+            if(socket.isClosed()){
+                socket.connect(sockaddr);
+                Log.i("RESPONSE", "RICONNESSO");
+            }
             if(!socket.isConnected()){
                 socket.connect(sockaddr);
+                Log.i("RESPONSE", "RICONNESSO DUE");
             }
             OutputStream out = socket.getOutputStream();
             param += "\r\n";
@@ -278,11 +347,91 @@ class SenderTask extends AsyncTask<String, Void, Void> {
             e.printStackTrace();
         }
 
-        return null;
+        return response;
     }
-
         /*protected void onProgressUpdate(Integer... progress) {
         }
-        protected void onPostExecute(Long result) {
+        */
+        /*protected void onPostExecute(String result) {
+            //Log.i("RESPONSE", result);
         }*/
 }
+
+class ReaderTask extends AsyncTask<Context, Void, Map<String,Object>> {
+    Context context;
+    Socket socket;
+    SocketAddress sockaddr;
+
+    ReaderTask(Context _context, Socket socket, SocketAddress sockaddr){
+        super();
+        this.context = _context;
+        this.socket = socket;
+        this.sockaddr = sockaddr;
+        try {
+            this.socket.setSoTimeout(1000);
+        } catch (SocketException e) {
+            e.printStackTrace();
+        }
+    }
+    @Override
+    protected Map<String, Object> doInBackground(Context... params) {
+        String response = "";
+        try {
+            if(socket.isClosed()){
+                socket.connect(sockaddr);
+            }
+            if(!socket.isConnected()){
+                socket.connect(sockaddr);
+            }
+
+           /* BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+
+            response = in.readLine();*/
+
+            ByteArrayOutputStream bout = new ByteArrayOutputStream(4);
+            byte [] buffer = new byte[4];
+            int bytesRead;
+            InputStream in = socket.getInputStream();
+
+            while((bytesRead = in.read(buffer)) != -1){
+                Log.i("DEBUG", String.valueOf(bytesRead));
+                bout.write(buffer, 0, bytesRead);
+                response += bout.toString("UTF-8");
+                Log.i("DEBUG", response);
+            }
+
+            if(isCancelled())cancel(true);
+
+        } catch (UnknownHostException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        Map<String, Object> map = new HashMap<String, Object>();
+        map.put("Response", response);
+        map.put("Context", this.context);
+        if(isCancelled())cancel(true);
+
+        return map;
+    }
+
+    protected void onPostExecute(Map<String, Object> result) {
+        Log.i("RESPONSE", (String) result.get("Response"));
+        if((String) result.get("Response") != ""){
+            long delay =  System.currentTimeMillis() - ((MyApplication)context.getApplicationContext()).getDelay();
+            Log.i("DELAY", String.valueOf(delay));
+            Toast toast = Toast.makeText((Context) result.get("Context"), (String) result.get("Response") + "Milliseconds: " + delay, Toast.LENGTH_LONG);
+            toast.show();
+            ((MyApplication)context.getApplicationContext()).setDelay(0);
+            ((MyApplication)context.getApplicationContext()).setFinished(true);
+            ((MyApplication)context.getApplicationContext()).setChance(0);
+        }else{
+            //hedark1-
+            // ((MyApplication)context.getApplicationContext()).setChance(((MyApplication)context.getApplicationContext()).getChance()+1);
+            new SenderTask("Check", socket, sockaddr).execute();
+            new ReaderTask(context, socket, sockaddr).execute();
+        }
+    }
+
+}
+
