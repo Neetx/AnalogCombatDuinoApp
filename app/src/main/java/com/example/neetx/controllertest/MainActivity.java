@@ -1,5 +1,4 @@
 package com.example.neetx.controllertest;
-
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -11,16 +10,25 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
-
+import android.widget.Toast;
+import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketAddress;
+import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 
 
 public class MainActivity extends AppCompatActivity {
@@ -29,7 +37,8 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(new MyView(this));
-        long time = System.currentTimeMillis();
+        ((MyApplication) this.getApplication()).setFinished(true);
+        ((MyApplication) this.getApplication()).setChance(0);
     }
 
     public class MyView extends View
@@ -38,11 +47,12 @@ public class MainActivity extends AppCompatActivity {
         final Socket socket = new Socket();
         Sender senderObj = new Sender(sockaddr, socket);
         Paint paint = null;
-
+        private Context _context;
 
         Circle controller = new Circle();
         Circle shooter = new Circle();
         Circle analog = new Circle();
+        Circle check = new Circle();
 
         List<Boolean> events = new ArrayList<Boolean>();
         long time = System.currentTimeMillis();
@@ -57,6 +67,7 @@ public class MainActivity extends AppCompatActivity {
         {
             super(context);
             paint = new Paint();
+            this._context = context;
         }
 
         public void myDrawCircle(int x, int y) {
@@ -75,6 +86,7 @@ public class MainActivity extends AppCompatActivity {
             controller.setRadius(y/2);
             shooter.setRadius(y/6);
             analog.setRadius(controller.getRadius()/6);
+            check.setRadius(y/10);
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(Color.DKGRAY);
             mcanvas.drawPaint(paint);
@@ -90,8 +102,13 @@ public class MainActivity extends AppCompatActivity {
             analog.setCenterX(controller.getCenterX());
             analog.setCenterY(controller.getCenterY());
 
+            check.setCenterX(x/11);
+            check.setCenterY(y/7);
+
             mcanvas.drawCircle((float)controller.getCenterX(), (float)controller.getCenterY(), (float) controller.getRadius(), paint);
             mcanvas.drawCircle((float)shooter.getCenterX(),(float) shooter.getCenterY(), (float)shooter.getRadius(), paint);
+            paint.setColor((Color.BLUE));
+            mcanvas.drawCircle((float)check.getCenterX(), (float) check.getCenterY(), (float) check.getRadius(), paint);
             paint.setColor(Color.rgb(87,87,87) );
             if(start){
                 mPivotX = (float) analog.getCenterX();
@@ -102,6 +119,8 @@ public class MainActivity extends AppCompatActivity {
             paint.setColor(Color.WHITE);
             paint.setTextSize(50);
             mcanvas.drawText("Shoot", (float) shooter.getCenterX()- (float) shooter.getRadius()/2, (float) shooter.getCenterY()+25, paint);
+            paint.setTextSize(35);
+            mcanvas.drawText("Check", (float) check.getCenterX()- (float) check.getRadius()/2, (float) check.getCenterY()+15, paint);
         }
 
         @Override
@@ -137,6 +156,15 @@ public class MainActivity extends AppCompatActivity {
                     }else if(shooter.checkDistance(x, y)) {
                         events.add(true);
                         senderObj.sendShoot();
+                    } else if(check.checkDistance(x, y)){
+                        Log.i("VARIABLE", String.valueOf(((MyApplication) _context.getApplicationContext()).getFinished()));
+                        if(((MyApplication) _context.getApplicationContext()).getFinished() || ((MyApplication) _context.getApplicationContext()).getChance() >= 1) {
+                            ((MyApplication)_context.getApplicationContext()).setFinished(false);
+                            ((MyApplication)_context.getApplicationContext()).setDelay(System.currentTimeMillis());
+                            senderObj.sendCheck(this._context);
+                        }else{
+                            Log.i("RESPONSE", "BLOCKED");
+                        }
                     } else {
                         if(events.contains(true)){
                             Log.i("SIGNAL","STOP EXCEPTION");
@@ -244,17 +272,40 @@ class Point{
 class Sender {
     private SocketAddress sockaddr;
     private Socket socket;
-    private String lastcommand ="";
 
     Sender(SocketAddress sockaddr, Socket socket) {
         this.sockaddr = sockaddr;
-        this.socket = socket;
+        this.socket = socket;;
     }
 
-    void sendShoot(){ new SenderTask("Shoot", socket, sockaddr).execute();}
+    void sendShoot(){
+
+        new SenderTask("Shoot", socket, sockaddr).execute();
+    }
 
     void sendStop(){
         new SenderTask("STOP", socket, sockaddr).execute();
+    }
+
+    void sendCheck(Context _context){
+        try {
+            new SenderTask("Check", socket, sockaddr).execute().get(1000, java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (ExecutionException e) {
+            e.printStackTrace();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } catch (TimeoutException e) {
+            e.printStackTrace();
+        }
+       // try {
+            new ReaderTask(_context, socket, sockaddr).execute();//.get(3000, TimeUnit.MILLISECONDS);
+     /*   } catch (ExecutionException e) {
+            e.printStackTrace();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } catch (TimeoutException e) {
+            e.printStackTrace();
+        }*/
     }
 
     void sendCommand(Double angle, Double radius){
@@ -264,7 +315,7 @@ class Sender {
     }
 }
 
-class SenderTask extends AsyncTask<String, Void, Void> {
+class SenderTask extends AsyncTask<String, Void, String> {
     String param;
     Socket socket;
     SocketAddress sockaddr;
@@ -275,10 +326,17 @@ class SenderTask extends AsyncTask<String, Void, Void> {
         this.sockaddr = sockaddr;
     }
     @Override
-    protected Void doInBackground(String... params) {
+    protected String doInBackground(String... params) {
+        Log.i("RESPONSE","STO QUA");
+        String response = "";
         try {
+            if(socket.isClosed()){
+                socket.connect(sockaddr);
+                Log.i("RESPONSE", "RICONNESSO");
+            }
             if(!socket.isConnected()){
                 socket.connect(sockaddr);
+                Log.i("RESPONSE", "RICONNESSO DUE");
             }
             OutputStream out = socket.getOutputStream();
             param += "\r\n";
@@ -289,11 +347,91 @@ class SenderTask extends AsyncTask<String, Void, Void> {
             e.printStackTrace();
         }
 
-        return null;
+        return response;
     }
-
         /*protected void onProgressUpdate(Integer... progress) {
         }
-        protected void onPostExecute(Long result) {
+        */
+        /*protected void onPostExecute(String result) {
+            //Log.i("RESPONSE", result);
         }*/
 }
+
+class ReaderTask extends AsyncTask<Context, Void, Map<String,Object>> {
+    Context context;
+    Socket socket;
+    SocketAddress sockaddr;
+
+    ReaderTask(Context _context, Socket socket, SocketAddress sockaddr){
+        super();
+        this.context = _context;
+        this.socket = socket;
+        this.sockaddr = sockaddr;
+        try {
+            this.socket.setSoTimeout(1000);
+        } catch (SocketException e) {
+            e.printStackTrace();
+        }
+    }
+    @Override
+    protected Map<String, Object> doInBackground(Context... params) {
+        String response = "";
+        try {
+            if(socket.isClosed()){
+                socket.connect(sockaddr);
+            }
+            if(!socket.isConnected()){
+                socket.connect(sockaddr);
+            }
+
+           /* BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+
+            response = in.readLine();*/
+
+            ByteArrayOutputStream bout = new ByteArrayOutputStream(4);
+            byte [] buffer = new byte[4];
+            int bytesRead;
+            InputStream in = socket.getInputStream();
+
+            while((bytesRead = in.read(buffer)) != -1){
+                Log.i("DEBUG", String.valueOf(bytesRead));
+                bout.write(buffer, 0, bytesRead);
+                response += bout.toString("UTF-8");
+                Log.i("DEBUG", response);
+            }
+
+            if(isCancelled())cancel(true);
+
+        } catch (UnknownHostException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        Map<String, Object> map = new HashMap<String, Object>();
+        map.put("Response", response);
+        map.put("Context", this.context);
+        if(isCancelled())cancel(true);
+
+        return map;
+    }
+
+    protected void onPostExecute(Map<String, Object> result) {
+        Log.i("RESPONSE", (String) result.get("Response"));
+        if((String) result.get("Response") != ""){
+            long delay =  System.currentTimeMillis() - ((MyApplication)context.getApplicationContext()).getDelay();
+            Log.i("DELAY", String.valueOf(delay));
+            Toast toast = Toast.makeText((Context) result.get("Context"), (String) result.get("Response") + "Milliseconds: " + delay, Toast.LENGTH_LONG);
+            toast.show();
+            ((MyApplication)context.getApplicationContext()).setDelay(0);
+            ((MyApplication)context.getApplicationContext()).setFinished(true);
+            ((MyApplication)context.getApplicationContext()).setChance(0);
+        }else{
+            //hedark1-
+            // ((MyApplication)context.getApplicationContext()).setChance(((MyApplication)context.getApplicationContext()).getChance()+1);
+            new SenderTask("Check", socket, sockaddr).execute();
+            new ReaderTask(context, socket, sockaddr).execute();
+        }
+    }
+
+}
+
