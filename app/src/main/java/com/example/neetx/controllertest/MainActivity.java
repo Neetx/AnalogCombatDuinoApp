@@ -126,13 +126,13 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public boolean onTouchEvent(MotionEvent event) {
 
-            Log.i("TIME", Long.toString(time));
+            //Log.i("TIME", Long.toString(time));
 
             int action = MotionEventCompat.getActionMasked(event);
             int x = (int) event.getX();
             int y = (int) event.getY();
 
-            Log.i("DOWN ACTION","EVENT");
+            //Log.i("DOWN ACTION","EVENT");
 
             switch (action) {
                 case (MotionEvent.ACTION_DOWN):
@@ -140,7 +140,7 @@ public class MainActivity extends AppCompatActivity {
                         senderObj.sendCommand(controller.getDegrees(x,y), controller.getDistance(x,y));
                         this.myDrawCircle(x,y);
                     }else if(shooter.checkDistance(x, y)) {
-                        Log.i("DOWN_shooter", "SHOOT SIGNAL");
+                        //Log.i("DOWN_shooter", "SHOOT SIGNAL");
                         senderObj.sendShoot();
                     }
                     return true;
@@ -150,24 +150,24 @@ public class MainActivity extends AppCompatActivity {
                         if(System.currentTimeMillis() >= time+200) {
                             events.add(true);
                             senderObj.sendCommand(controller.getDegrees(x, y), controller.getDistance(x, y));
-                            Log.i("TIME", "SENDED");
+                            //Log.i("TIME", "SENDED");
                             time = System.currentTimeMillis();
                         }
                     }else if(shooter.checkDistance(x, y)) {
                         events.add(true);
                         senderObj.sendShoot();
                     } else if(check.checkDistance(x, y)){
-                        Log.i("VARIABLE", String.valueOf(((MyApplication) _context.getApplicationContext()).getFinished()));
+                        //Log.i("VARIABLE", String.valueOf(((MyApplication) _context.getApplicationContext()).getFinished()));
                         if(((MyApplication) _context.getApplicationContext()).getFinished() || ((MyApplication) _context.getApplicationContext()).getChance() >= 1) {
                             ((MyApplication)_context.getApplicationContext()).setFinished(false);
                             ((MyApplication)_context.getApplicationContext()).setDelay(System.currentTimeMillis());
                             senderObj.sendCheck(this._context);
                         }else{
-                            Log.i("RESPONSE", "BLOCKED");
+                            //Log.i("RESPONSE", "BLOCKED");
                         }
                     } else {
                         if(events.contains(true)){
-                            Log.i("SIGNAL","STOP EXCEPTION");
+                            //Log.i("SIGNAL","STOP EXCEPTION");
                             this.myDrawCircle((int) controller.getCenterX(), (int) controller.getCenterY());
                             senderObj.sendStop();
                             events.clear();
@@ -178,9 +178,9 @@ public class MainActivity extends AppCompatActivity {
                     if(controller.checkDistance(x, y)){
                         senderObj.sendStop();
                         this.myDrawCircle((int) controller.getCenterX(),(int) controller.getCenterY());
-                        Log.i("SIGNAL","STOP SIGNAL");
+                        //Log.i("SIGNAL","STOP SIGNAL");
                     }else if(shooter.checkDistance(x, y)) {
-                        Log.i("UP_shooter", "SHOOT SIGNAL");
+                        //Log.i("UP_shooter", "SHOOT SIGNAL");
                     }
                     return true;
                 default:
@@ -228,13 +228,13 @@ class Circle{
 
         double dx = Math.abs(x - this.center.getX());
         double dy = Math.abs(y - this.center.getY());
-        Log.i("CHECK dx",Double.toString(dx));
-        Log.i("CHECK dy",Double.toString(dy));
-        Log.i("CHECK radius", Double.toString(radius));
-        Log.i("CHECK dist", Double.toString(getDistance(x,y)));
+        //Log.i("CHECK dx",Double.toString(dx));
+        //Log.i("CHECK dy",Double.toString(dy));
+        //Log.i("CHECK radius", Double.toString(radius));
+        //Log.i("CHECK dist", Double.toString(getDistance(x,y)));
 
         if (this.radius >= getDistance(x,y)){
-            Log.i("CHECK","OK");
+            //Log.i("CHECK","OK");
             return true;
         } else {
             return false;
@@ -280,23 +280,23 @@ class Sender {
 
     void sendShoot(){
 
-        new SenderTask("Shoot", socket, sockaddr).execute();
+        new SenderTask("{\"CMD\":\"Shoot\",\"Params\":\"null\",\"Resp\":\"false\"}", socket, sockaddr).execute();
     }
 
     void sendStop(){
-        new SenderTask("STOP", socket, sockaddr).execute();
+        new SenderTask("{\"CMD\":\"Stop\",\"Params\":\"null\",\"Resp\":\"false\"}", socket, sockaddr).execute();
     }
 
     void sendCheck(Context _context){
-        try {
-            new SenderTask("Check", socket, sockaddr).execute().get(1000, java.util.concurrent.TimeUnit.MILLISECONDS);
-        } catch (ExecutionException e) {
+       // try {
+            new SenderTask("{\"CMD\":\"Check\",\"Params\":\"null\",\"Resp\":\"true\"}", socket, sockaddr).execute();//.get(1000, java.util.concurrent.TimeUnit.MILLISECONDS);
+        /*} catch (ExecutionException e) {
             e.printStackTrace();
         } catch (InterruptedException e) {
             e.printStackTrace();
         } catch (TimeoutException e) {
             e.printStackTrace();
-        }
+        }*/
        // try {
             new ReaderTask(_context, socket, sockaddr).execute();//.get(3000, TimeUnit.MILLISECONDS);
      /*   } catch (ExecutionException e) {
@@ -309,8 +309,9 @@ class Sender {
     }
 
     void sendCommand(Double angle, Double radius){
-        String str = "R"+String.format(Locale.getDefault(),"%.2f", radius)+"A"+String.format(Locale.getDefault(),"%.2f", angle);
-        Log.i("str",str);
+        String str = "{\"CMD\":\"Move\",\"Params\":\"{'R':'"+String.format(Locale.getDefault(),"%.2f", radius)+"','A':'"+String.format(Locale.getDefault(),"%.2f", angle)+"'}\",\"Resp\":\"false\"}";
+        //String str = "R"+String.format(Locale.getDefault(),"%.2f", radius)+"A"+String.format(Locale.getDefault(),"%.2f", angle);
+        //Log.i("str",str);
         new SenderTask(str, socket, sockaddr).execute();
     }
 }
@@ -327,18 +328,19 @@ class SenderTask extends AsyncTask<String, Void, String> {
     }
     @Override
     protected String doInBackground(String... params) {
-        Log.i("RESPONSE","STO QUA");
+        //Log.i("RESPONSE","STO QUA");
         String response = "";
         try {
             if(socket.isClosed()){
                 socket.connect(sockaddr);
-                Log.i("RESPONSE", "RICONNESSO");
+                //Log.i("RESPONSE", "RICONNESSO");
             }
             if(!socket.isConnected()){
                 socket.connect(sockaddr);
-                Log.i("RESPONSE", "RICONNESSO DUE");
+                //Log.i("RESPONSE", "RICONNESSO DUE");
             }
             OutputStream out = socket.getOutputStream();
+            Log.i("JSON",param);
             param += "\r\n";
             out.write(param.getBytes());
         } catch (UnknownHostException e) {
@@ -394,10 +396,10 @@ class ReaderTask extends AsyncTask<Context, Void, Map<String,Object>> {
             InputStream in = socket.getInputStream();
 
             while((bytesRead = in.read(buffer)) != -1){
-                Log.i("DEBUG", String.valueOf(bytesRead));
+                //Log.i("DEBUG", String.valueOf(bytesRead));
                 bout.write(buffer, 0, bytesRead);
                 response += bout.toString("UTF-8");
-                Log.i("DEBUG", response);
+                //Log.i("DEBUG", response);
             }
 
             if(isCancelled())cancel(true);
@@ -416,10 +418,10 @@ class ReaderTask extends AsyncTask<Context, Void, Map<String,Object>> {
     }
 
     protected void onPostExecute(Map<String, Object> result) {
-        Log.i("RESPONSE", (String) result.get("Response"));
+        //Log.i("RESPONSE", (String) result.get("Response"));
         if((String) result.get("Response") != ""){
             long delay =  System.currentTimeMillis() - ((MyApplication)context.getApplicationContext()).getDelay();
-            Log.i("DELAY", String.valueOf(delay));
+            //Log.i("DELAY", String.valueOf(delay));
             Toast toast = Toast.makeText((Context) result.get("Context"), (String) result.get("Response") + "Milliseconds: " + delay, Toast.LENGTH_LONG);
             toast.show();
             ((MyApplication)context.getApplicationContext()).setDelay(0);
