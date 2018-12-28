@@ -4,6 +4,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.os.AsyncTask;
+import android.os.StrictMode;
 import android.support.v4.view.MotionEventCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -11,12 +12,16 @@ import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.Toast;
+
+import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.PrintWriter;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketAddress;
@@ -39,6 +44,9 @@ public class MainActivity extends AppCompatActivity {
         setContentView(new MyView(this));
         ((MyApplication) this.getApplication()).setFinished(true);
         ((MyApplication) this.getApplication()).setChance(0);
+
+        StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
+        StrictMode.setThreadPolicy(policy);
     }
 
     public class MyView extends View
@@ -142,6 +150,15 @@ public class MainActivity extends AppCompatActivity {
                     }else if(shooter.checkDistance(x, y)) {
                         //Log.i("DOWN_shooter", "SHOOT SIGNAL");
                         senderObj.sendShoot();
+                    }else if(check.checkDistance(x, y)) {
+                        //Log.i("VARIABLE", String.valueOf(((MyApplication) _context.getApplicationContext()).getFinished()));
+                        if (((MyApplication) _context.getApplicationContext()).getFinished() || ((MyApplication) _context.getApplicationContext()).getChance() >= 1) {
+                            ((MyApplication) _context.getApplicationContext()).setFinished(false);
+                            ((MyApplication) _context.getApplicationContext()).setDelay(System.currentTimeMillis());
+                            senderObj.sendCheck(this._context);
+                        } else {
+                            //Log.i("RESPONSE", "BLOCKED");
+                        }
                     }
                     return true;
                 case (MotionEvent.ACTION_MOVE):
@@ -156,15 +173,6 @@ public class MainActivity extends AppCompatActivity {
                     }else if(shooter.checkDistance(x, y)) {
                         events.add(true);
                         senderObj.sendShoot();
-                    } else if(check.checkDistance(x, y)){
-                        //Log.i("VARIABLE", String.valueOf(((MyApplication) _context.getApplicationContext()).getFinished()));
-                        if(((MyApplication) _context.getApplicationContext()).getFinished() || ((MyApplication) _context.getApplicationContext()).getChance() >= 1) {
-                            ((MyApplication)_context.getApplicationContext()).setFinished(false);
-                            ((MyApplication)_context.getApplicationContext()).setDelay(System.currentTimeMillis());
-                            senderObj.sendCheck(this._context);
-                        }else{
-                            //Log.i("RESPONSE", "BLOCKED");
-                        }
                     } else {
                         if(events.contains(true)){
                             //Log.i("SIGNAL","STOP EXCEPTION");
@@ -288,24 +296,8 @@ class Sender {
     }
 
     void sendCheck(Context _context){
-       // try {
-            new SenderTask("{\"CMD\":\"Check\",\"Params\":\"null\",\"Resp\":\"true\"}", socket, sockaddr).execute();//.get(1000, java.util.concurrent.TimeUnit.MILLISECONDS);
-        /*} catch (ExecutionException e) {
-            e.printStackTrace();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        } catch (TimeoutException e) {
-            e.printStackTrace();
-        }*/
-       // try {
-            new ReaderTask(_context, socket, sockaddr).execute();//.get(3000, TimeUnit.MILLISECONDS);
-     /*   } catch (ExecutionException e) {
-            e.printStackTrace();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        } catch (TimeoutException e) {
-            e.printStackTrace();
-        }*/
+       new SenderTask("{\"CMD\":\"Check\",\"Params\":\"null\",\"Resp\":\"true\"}", socket, sockaddr).execute();//.get(1000, java.util.concurrent.TimeUnit.MILLISECONDS);
+       new ReaderTask(_context, socket, sockaddr).execute();//.get(3000, TimeUnit.MILLISECONDS);
     }
 
     void sendCommand(Double angle, Double radius){
@@ -333,11 +325,11 @@ class SenderTask extends AsyncTask<String, Void, String> {
         try {
             if(socket.isClosed()){
                 socket.connect(sockaddr);
-                //Log.i("RESPONSE", "RICONNESSO");
+                Log.i("RESPONSE", "RIAPERTO");
             }
             if(!socket.isConnected()){
                 socket.connect(sockaddr);
-                //Log.i("RESPONSE", "RICONNESSO DUE");
+                Log.i("RESPONSE", "RICONNESSO");
             }
             OutputStream out = socket.getOutputStream();
             Log.i("JSON",param);
@@ -363,17 +355,13 @@ class ReaderTask extends AsyncTask<Context, Void, Map<String,Object>> {
     Context context;
     Socket socket;
     SocketAddress sockaddr;
+    InputStream in;
 
     ReaderTask(Context _context, Socket socket, SocketAddress sockaddr){
         super();
         this.context = _context;
         this.socket = socket;
         this.sockaddr = sockaddr;
-        try {
-            this.socket.setSoTimeout(1000);
-        } catch (SocketException e) {
-            e.printStackTrace();
-        }
     }
     @Override
     protected Map<String, Object> doInBackground(Context... params) {
@@ -381,26 +369,37 @@ class ReaderTask extends AsyncTask<Context, Void, Map<String,Object>> {
         try {
             if(socket.isClosed()){
                 socket.connect(sockaddr);
+                Log.i("RESPONSE", "RIAPERTO");
+
             }
             if(!socket.isConnected()){
                 socket.connect(sockaddr);
+                Log.i("RESPONSE", "RICONNESSO");
             }
+            this.socket.setSoTimeout(200);
 
-           /* BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-
-            response = in.readLine();*/
-
-            ByteArrayOutputStream bout = new ByteArrayOutputStream(4);
-            byte [] buffer = new byte[4];
+            int size = 25;
+            ByteArrayOutputStream bout = new ByteArrayOutputStream(size);
+            byte [] buffer = new byte[size];
             int bytesRead;
+            bout.reset();
+
             InputStream in = socket.getInputStream();
 
-            while((bytesRead = in.read(buffer)) != -1){
-                //Log.i("DEBUG", String.valueOf(bytesRead));
+            while((bytesRead = in.read(buffer,0,buffer.length)) != -1){
                 bout.write(buffer, 0, bytesRead);
+                Log.i("READ", String.valueOf(bytesRead));
                 response += bout.toString("UTF-8");
-                //Log.i("DEBUG", response);
+                //if(String.valueOf ((char)buffer[size-1]) != null){
+                if(response.endsWith("\n")){
+                    Log.i("DEBUG", "DEBUG");
+                    break;
+                }else{
+                    Log.i("DEBUG","NULL");
+                }
             }
+
+
 
             if(isCancelled())cancel(true);
 
@@ -420,6 +419,7 @@ class ReaderTask extends AsyncTask<Context, Void, Map<String,Object>> {
     protected void onPostExecute(Map<String, Object> result) {
         //Log.i("RESPONSE", (String) result.get("Response"));
         if((String) result.get("Response") != ""){
+            Log.i("JSON", "OKAY");
             long delay =  System.currentTimeMillis() - ((MyApplication)context.getApplicationContext()).getDelay();
             //Log.i("DELAY", String.valueOf(delay));
             Toast toast = Toast.makeText((Context) result.get("Context"), (String) result.get("Response") + "Milliseconds: " + delay, Toast.LENGTH_LONG);
@@ -428,9 +428,29 @@ class ReaderTask extends AsyncTask<Context, Void, Map<String,Object>> {
             ((MyApplication)context.getApplicationContext()).setFinished(true);
             ((MyApplication)context.getApplicationContext()).setChance(0);
         }else{
-            //hedark1-
+            Log.i("JSON", "NADA");
             // ((MyApplication)context.getApplicationContext()).setChance(((MyApplication)context.getApplicationContext()).getChance()+1);
-            new SenderTask("Check", socket, sockaddr).execute();
+            try {
+
+                int size = 6;
+                ByteArrayOutputStream bout = new ByteArrayOutputStream(size);
+                byte [] buffer = new byte[size];
+                int bytesRead;
+                bout.reset();
+                InputStream in = socket.getInputStream();
+                String response = "";
+                while((bytesRead = in.read(buffer)) != -1){
+                    bout.write(buffer, 0, bytesRead);
+                    response += bout.toString("UTF-8");
+                    if(response.endsWith("\n")){
+                        break;
+                    }
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+
+            new SenderTask("{\"CMD\":\"Check\",\"Params\":\"null\",\"Resp\":\"true\"}", socket, sockaddr).execute();
             new ReaderTask(context, socket, sockaddr).execute();
         }
     }
