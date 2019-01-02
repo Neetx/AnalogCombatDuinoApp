@@ -1,5 +1,7 @@
 package com.example.neetx.controllertest;
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -11,6 +13,9 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
+import android.widget.EditText;
+import android.widget.LinearLayout;
 import android.widget.Toast;
 
 import org.json.JSONException;
@@ -44,19 +49,53 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
         setContentView(new MyView(this));
         ((MyApplication) this.getApplication()).setFinished(true);
         ((MyApplication) this.getApplication()).setChance(0);
 
         StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
         StrictMode.setThreadPolicy(policy);
+
+        /* CONNECTION DIALOG Todo: Make a button for this and catch user errors */
+        LinearLayout ll = new LinearLayout(this);
+
+        final EditText txtip = new EditText(this);
+        final EditText txtport = new EditText(this);
+        txtip.setText("192.168.43.57");
+        txtport.setText("80");
+
+        ll.addView(txtip);
+        ll.addView(txtport);
+
+        new AlertDialog.Builder(this)
+                .setTitle("Target Setup")
+                .setMessage("Please insert IP and PORT.")
+                .setView(ll)
+                .setPositiveButton("Okay", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int whichButton) {
+                        String ip = txtip.getText().toString();
+                        String port = txtport.getText().toString();
+                        Log.i("DIALOG", ip);
+                        Log.i("DIALOG", port);
+                        SocketAddress sockaddr = new InetSocketAddress(ip, Integer.parseInt(port));
+                        Socket socket = new Socket();
+                        MyView.senderObj.setConnection(sockaddr, socket);
+                    }
+                })
+                .setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int whichButton) {
+                    }
+                })
+                .show();
+        /* CONNECTION BUTTON END*/
     }
 
-    public class MyView extends View
+    public static class MyView extends View
     {
-        final SocketAddress sockaddr = new InetSocketAddress("192.168.43.57", 80);
-        final Socket socket = new Socket();
-        Sender senderObj = new Sender(sockaddr, socket);
+        private static SocketAddress sockaddr = new InetSocketAddress("192.168.43.57", 80);
+        private static Socket socket =  new Socket();
+        public static Sender senderObj = new Sender(sockaddr, socket);
         Paint paint = null;
         private Context _context;
 
@@ -286,7 +325,12 @@ class Sender {
 
     Sender(SocketAddress sockaddr, Socket socket) {
         this.sockaddr = sockaddr;
-        this.socket = socket;;
+        this.socket = socket;
+    }
+
+    void setConnection(SocketAddress sockaddr, Socket socket){
+        this.sockaddr = sockaddr;
+        this.socket = socket;
     }
 
     void sendShoot(){
