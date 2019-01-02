@@ -13,6 +13,9 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.widget.Toast;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
@@ -378,7 +381,7 @@ class ReaderTask extends AsyncTask<Context, Void, Map<String,Object>> {
             }
             this.socket.setSoTimeout(200);
 
-            int size = 25;
+            int size = 100;
             ByteArrayOutputStream bout = new ByteArrayOutputStream(size);
             byte [] buffer = new byte[size];
             int bytesRead;
@@ -422,8 +425,13 @@ class ReaderTask extends AsyncTask<Context, Void, Map<String,Object>> {
             Log.i("JSON", "OKAY");
             long delay =  System.currentTimeMillis() - ((MyApplication)context.getApplicationContext()).getDelay();
             //Log.i("DELAY", String.valueOf(delay));
-            Toast toast = Toast.makeText((Context) result.get("Context"), (String) result.get("Response") + "Milliseconds: " + delay, Toast.LENGTH_LONG);
-            toast.show();
+            try {
+                JSONObject obj = new JSONObject(result.get("Response").toString());
+                Toast toast = Toast.makeText((Context) result.get("Context"), (String) obj.getString("resp") + "Milliseconds: " + delay, Toast.LENGTH_LONG);
+                toast.show();
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
             ((MyApplication)context.getApplicationContext()).setDelay(0);
             ((MyApplication)context.getApplicationContext()).setFinished(true);
             ((MyApplication)context.getApplicationContext()).setChance(0);
@@ -432,7 +440,7 @@ class ReaderTask extends AsyncTask<Context, Void, Map<String,Object>> {
             // ((MyApplication)context.getApplicationContext()).setChance(((MyApplication)context.getApplicationContext()).getChance()+1);
             try {
 
-                int size = 6;
+                int size = 100;
                 ByteArrayOutputStream bout = new ByteArrayOutputStream(size);
                 byte [] buffer = new byte[size];
                 int bytesRead;
