@@ -103,6 +103,7 @@ public class MainActivity extends AppCompatActivity {
         Circle shooter = new Circle();
         Circle analog = new Circle();
         Circle check = new Circle();
+        Circle setup = new Circle();
 
         List<Boolean> events = new ArrayList<Boolean>();
         long time = System.currentTimeMillis();
@@ -131,16 +132,19 @@ public class MainActivity extends AppCompatActivity {
         {
             mcanvas = canvas;
             super.onDraw(mcanvas);
+
             int x = getWidth();
             int y = getHeight();
+
             controller.setRadius(y/2);
             shooter.setRadius(y/6);
             analog.setRadius(controller.getRadius()/6);
             check.setRadius(y/10);
+            setup.setRadius(y/10);
+
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(Color.DKGRAY);
             mcanvas.drawPaint(paint);
-
             paint.setColor(Color.parseColor("#CD5C5C"));
 
             controller.setCenterX((x-(x/4)));
@@ -155,10 +159,14 @@ public class MainActivity extends AppCompatActivity {
             check.setCenterX(x/11);
             check.setCenterY(y/7);
 
+            setup.setCenterX(x/4);
+            setup.setCenterY(y/7);
+
             mcanvas.drawCircle((float)controller.getCenterX(), (float)controller.getCenterY(), (float) controller.getRadius(), paint);
             mcanvas.drawCircle((float)shooter.getCenterX(),(float) shooter.getCenterY(), (float)shooter.getRadius(), paint);
             paint.setColor((Color.BLUE));
             mcanvas.drawCircle((float)check.getCenterX(), (float) check.getCenterY(), (float) check.getRadius(), paint);
+            mcanvas.drawCircle((float)setup.getCenterX(), (float) setup.getCenterY(), (float) setup.getRadius(), paint);
             paint.setColor(Color.rgb(87,87,87) );
             if(start){
                 mPivotX = (float) analog.getCenterX();
@@ -171,6 +179,7 @@ public class MainActivity extends AppCompatActivity {
             mcanvas.drawText("Shoot", (float) shooter.getCenterX()- (float) shooter.getRadius()/2, (float) shooter.getCenterY()+25, paint);
             paint.setTextSize(35);
             mcanvas.drawText("Check", (float) check.getCenterX()- (float) check.getRadius()/2, (float) check.getCenterY()+15, paint);
+            mcanvas.drawText("Setup", (float) setup.getCenterX()- (float) setup.getRadius()/2, (float) setup.getCenterY()+15, paint);
         }
 
         @Override
@@ -192,15 +201,48 @@ public class MainActivity extends AppCompatActivity {
                     }else if(shooter.checkDistance(x, y)) {
                         //Log.i("DOWN_shooter", "SHOOT SIGNAL");
                         senderObj.sendShoot();
-                    }else if(check.checkDistance(x, y)) {
+                    }else if(check.checkDistance(x, y)){
                         //Log.i("VARIABLE", String.valueOf(((MyApplication) _context.getApplicationContext()).getFinished()));
-                        if (((MyApplication) _context.getApplicationContext()).getFinished() || ((MyApplication) _context.getApplicationContext()).getChance() >= 1) {
+                        if (((MyApplication) _context.getApplicationContext()).getFinished() || ((MyApplication) _context.getApplicationContext()).getChance() <= 1) {
                             ((MyApplication) _context.getApplicationContext()).setFinished(false);
                             ((MyApplication) _context.getApplicationContext()).setDelay(System.currentTimeMillis());
                             senderObj.sendCheck(this._context);
                         } else {
                             //Log.i("RESPONSE", "BLOCKED");
                         }
+                    }else if(setup.checkDistance(x, y)){
+                        /* CONNECTION DIALOG Todo: Catch user errors */
+                        LinearLayout ll = new LinearLayout(this._context);
+
+                        final EditText txtip = new EditText(this._context);
+                        final EditText txtport = new EditText(this._context);
+                        txtip.setText("192.168.43.57");
+                        txtport.setText("80");
+
+                        ll.addView(txtip);
+                        ll.addView(txtport);
+
+                        new AlertDialog.Builder(this._context)
+                                .setTitle("Target Setup")
+                                .setMessage("Please insert IP and PORT.")
+                                .setView(ll)
+                                .setPositiveButton("Okay", new DialogInterface.OnClickListener() {
+                                    public void onClick(DialogInterface dialog, int whichButton) {
+                                        String ip = txtip.getText().toString();
+                                        String port = txtport.getText().toString();
+                                        Log.i("DIALOG", ip);
+                                        Log.i("DIALOG", port);
+                                        SocketAddress sockaddr = new InetSocketAddress(ip, Integer.parseInt(port));
+                                        Socket socket = new Socket();
+                                        MyView.senderObj.setConnection(sockaddr, socket);
+                                    }
+                                })
+                                .setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+                                    public void onClick(DialogInterface dialog, int whichButton) {
+                                    }
+                                })
+                                .show();
+                        /* CONNECTION BUTTON END*/
                     }
                     return true;
                 case (MotionEvent.ACTION_MOVE):
@@ -329,6 +371,11 @@ class Sender {
     }
 
     void setConnection(SocketAddress sockaddr, Socket socket){
+        try {
+            this.socket.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
         this.sockaddr = sockaddr;
         this.socket = socket;
     }
@@ -471,7 +518,7 @@ class ReaderTask extends AsyncTask<Context, Void, Map<String,Object>> {
             //Log.i("DELAY", String.valueOf(delay));
             try {
                 JSONObject obj = new JSONObject(result.get("Response").toString());
-                Toast toast = Toast.makeText((Context) result.get("Context"), (String) obj.getString("resp") + "Milliseconds: " + delay, Toast.LENGTH_LONG);
+                Toast toast = Toast.makeText((Context) result.get("Context"), (String) obj.getString("resp") + "\nMilliseconds: " + delay, Toast.LENGTH_LONG);
                 toast.show();
             } catch (JSONException e) {
                 e.printStackTrace();
@@ -481,29 +528,33 @@ class ReaderTask extends AsyncTask<Context, Void, Map<String,Object>> {
             ((MyApplication)context.getApplicationContext()).setChance(0);
         }else{
             Log.i("JSON", "NADA");
-            // ((MyApplication)context.getApplicationContext()).setChance(((MyApplication)context.getApplicationContext()).getChance()+1);
-            try {
+            if(((MyApplication)context.getApplicationContext()).getChance() <= 1) {
+                try {
 
-                int size = 100;
-                ByteArrayOutputStream bout = new ByteArrayOutputStream(size);
-                byte [] buffer = new byte[size];
-                int bytesRead;
-                bout.reset();
-                InputStream in = socket.getInputStream();
-                String response = "";
-                while((bytesRead = in.read(buffer)) != -1){
-                    bout.write(buffer, 0, bytesRead);
-                    response += bout.toString("UTF-8");
-                    if(response.endsWith("\n")){
-                        break;
+                    int size = 100;
+                    ByteArrayOutputStream bout = new ByteArrayOutputStream(size);
+                    byte[] buffer = new byte[size];
+                    int bytesRead;
+                    bout.reset();
+                    InputStream in = socket.getInputStream();
+                    String response = "";
+                    while ((bytesRead = in.read(buffer)) != -1) {
+                        bout.write(buffer, 0, bytesRead);
+                        response += bout.toString("UTF-8");
+                        if (response.endsWith("\n")) {
+                            break;
+                        }
                     }
+                } catch (IOException e) {
+                    e.printStackTrace();
                 }
-            } catch (IOException e) {
-                e.printStackTrace();
+                ((MyApplication) context.getApplicationContext()).setChance(((MyApplication) context.getApplicationContext()).getChance() + 1);
+                new SenderTask("{\"CMD\":\"Check\",\"Params\":\"null\",\"Resp\":\"true\"}", socket, sockaddr).execute();
+                new ReaderTask(context, socket, sockaddr).execute();
+            } else {
+                Log.i("JSON","Connection Aborted");
+                ((MyApplication)context.getApplicationContext()).setChance(0);
             }
-
-            new SenderTask("{\"CMD\":\"Check\",\"Params\":\"null\",\"Resp\":\"true\"}", socket, sockaddr).execute();
-            new ReaderTask(context, socket, sockaddr).execute();
         }
     }
 
