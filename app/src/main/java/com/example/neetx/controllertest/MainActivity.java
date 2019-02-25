@@ -18,6 +18,9 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.Toast;
 
+import org.apache.commons.codec.BinaryDecoder;
+import org.apache.commons.codec.binary.BinaryCodec;
+import org.apache.commons.codec.binary.Hex;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -30,18 +33,23 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintWriter;
+import java.io.UnsupportedEncodingException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.BitSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
+
+import static android.os.SystemClock.sleep;
 
 
 public class MainActivity extends AppCompatActivity {
@@ -255,12 +263,16 @@ public class MainActivity extends AppCompatActivity {
                             time = System.currentTimeMillis();
                         }
                     }else if(shooter.checkDistance(x, y)) {
-                        events.add(true);
-                        senderObj.sendShoot();
-                    } else {
+                        if(System.currentTimeMillis() >= time+200) {
+                            events.add(true);
+                            senderObj.sendShoot();
+                            time = System.currentTimeMillis();
+                            }
+                        } else {
                         if(events.contains(true)){
                             //Log.i("SIGNAL","STOP EXCEPTION");
                             this.myDrawCircle((int) controller.getCenterX(), (int) controller.getCenterY());
+                            sleep(100);
                             senderObj.sendStop();
                             events.clear();
                         }
@@ -364,6 +376,9 @@ class Point{
 class Sender {
     private SocketAddress sockaddr;
     private Socket socket;
+    public byte[] mykey = Encryptor.hexStringToByteArray("feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308");
+    public byte [] iv = Encryptor.hexStringToByteArray("cafebabefacedbaddecaf888");
+    public Encryptor enc = new Encryptor(mykey);
 
     Sender(SocketAddress sockaddr, Socket socket) {
         this.sockaddr = sockaddr;
@@ -381,39 +396,102 @@ class Sender {
     }
 
     void sendShoot(){
+        //String param = "{\"CMD\":\"Shoot\",\"Params\":\"null\",\"Resp\":\"false\"}";
+        //String param = "AA";
+        byte[] hex_param = { 0b0000, 0b0000 };
+        Log.i("CRYPTO","SHOOT");
+        try {
+            Log.i("MOVETEST", Arrays.toString(hex_param));
+            //hex_param = param.getBytes("UTF-8");
+            byte [] encryptedString = enc.encrypt(hex_param, iv);
 
-        new SenderTask("{\"CMD\":\"Shoot\",\"Params\":\"null\",\"Resp\":\"false\"}", socket, sockaddr).execute();
+            new SenderTask(encryptedString, socket, sockaddr).execute();
+
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        //new SenderTask("{\"CMD\":\"Shoot\",\"Params\":\"null\",\"Resp\":\"false\"}", socket, sockaddr).execute();
     }
 
     void sendStop(){
-        new SenderTask("{\"CMD\":\"Stop\",\"Params\":\"null\",\"Resp\":\"false\"}", socket, sockaddr).execute();
+        String param = "{\"CMD\":\"Stop\",\"Params\":\"null\",\"Resp\":\"false\"}";
+        byte[] hex_param = {0b1100, 0b0000};
+        Log.i("CRYPTO","STOP");
+
+        try {
+            Log.i("MOVETEST", Arrays.toString(hex_param));
+            //hex_param = param.getBytes("UTF-8");
+            byte [] encryptedString = enc.encrypt(hex_param, iv);
+            new SenderTask(encryptedString, socket, sockaddr).execute();
+
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        //new SenderTask("{\"CMD\":\"Stop\",\"Params\":\"null\",\"Resp\":\"false\"}", socket, sockaddr).execute();
     }
 
     void sendCheck(Context _context){
-       new SenderTask("{\"CMD\":\"Check\",\"Params\":\"null\",\"Resp\":\"true\"}", socket, sockaddr).execute();//.get(1000, java.util.concurrent.TimeUnit.MILLISECONDS);
+        String param = "{\"CMD\":\"Check\",\"Params\":\"null\",\"Resp\":\"true\"}";
+        byte[] hex_param = {0b1010,0b0000};
+        Log.i("CRYPTO","CHECK");
+
+        try {
+            Log.i("MOVETEST", Arrays.toString(hex_param));
+            //hex_param = param.getBytes("UTF-8");
+            byte [] encryptedString = enc.encrypt(hex_param, iv);
+            new SenderTask(encryptedString, socket, sockaddr).execute();
+
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+       //new SenderTask("{\"CMD\":\"Check\",\"Params\":\"null\",\"Resp\":\"true\"}", socket, sockaddr).execute();//.get(1000, java.util.concurrent.TimeUnit.MILLISECONDS);
        new ReaderTask(_context, socket, sockaddr).execute();//.get(3000, TimeUnit.MILLISECONDS);
     }
 
     void sendCommand(Double angle, Double radius){
-        String str = "{\"CMD\":\"Move\",\"Params\":\"{'R':'"+String.format(Locale.getDefault(),"%.2f", radius)+"','A':'"+String.format(Locale.getDefault(),"%.2f", angle)+"'}\",\"Resp\":\"false\"}";
+        String param = "{\"CMD\":\"Move\",\"Params\":\"{'R':'"+String.format(Locale.getDefault(),"%.2f", radius)+"','A':'"+String.format(Locale.getDefault(),"%.2f", angle)+"'}\",\"Resp\":\"false\"}";
+        byte[] hex_param = {0b0101, (byte) (int) Math.floor(angle/2)};
+        Log.i("CRYPTO","MOVE");
+
+        Log.i("MOVETEST", Arrays.toString(hex_param));
+        Log.i("MOVETEST", String.valueOf(angle));
+        try {
+            //hex_param = param.getBytes("UTF-8");
+            byte [] encryptedString = enc.encrypt(hex_param, iv);
+            new SenderTask(encryptedString, socket, sockaddr).execute();
+
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
         //String str = "R"+String.format(Locale.getDefault(),"%.2f", radius)+"A"+String.format(Locale.getDefault(),"%.2f", angle);
         //Log.i("str",str);
-        new SenderTask(str, socket, sockaddr).execute();
+        //new SenderTask(str, socket, sockaddr).execute();
     }
 }
 
-class SenderTask extends AsyncTask<String, Void, String> {
-    String param;
+//class SenderTask extends AsyncTask<String, Void, String> {
+class SenderTask extends AsyncTask<byte[], Void, String> {
+
+    byte[] param;
     Socket socket;
     SocketAddress sockaddr;
-    SenderTask(String param, Socket socket, SocketAddress sockaddr){
+    SenderTask(byte[] param, Socket socket, SocketAddress sockaddr){
         super();
         this.param = param;
         this.socket = socket;
         this.sockaddr = sockaddr;
     }
     @Override
-    protected String doInBackground(String... params) {
+    protected String doInBackground(byte[]... params) {
         //Log.i("RESPONSE","STO QUA");
         String response = "";
         try {
@@ -426,9 +504,14 @@ class SenderTask extends AsyncTask<String, Void, String> {
                 Log.i("RESPONSE", "RICONNESSO");
             }
             OutputStream out = socket.getOutputStream();
-            Log.i("JSON",param);
-            param += "\r\n";
-            out.write(param.getBytes());
+            byte[] carriage_newline = {'>', '>', 0xD,0xA};
+            byte[] output = Encryptor.concatenateByteArrays(param,carriage_newline);
+            Log.i("CRYPTO", String.valueOf(output.length));
+            Log.i("CRYPTO", String.valueOf(Hex.encodeHex(output)));
+            out.write(output);
+            //Log.i("JSON",param);
+            //param += "\r\n";
+            //out.write(param.getBytes());
         } catch (UnknownHostException e) {
             e.printStackTrace();
         } catch (IOException e) {
@@ -549,7 +632,7 @@ class ReaderTask extends AsyncTask<Context, Void, Map<String,Object>> {
                     e.printStackTrace();
                 }
                 ((MyApplication) context.getApplicationContext()).setChance(((MyApplication) context.getApplicationContext()).getChance() + 1);
-                new SenderTask("{\"CMD\":\"Check\",\"Params\":\"null\",\"Resp\":\"true\"}", socket, sockaddr).execute();
+                //new SenderTask("{\"CMD\":\"Check\",\"Params\":\"null\",\"Resp\":\"true\"}", socket, sockaddr).execute();
                 new ReaderTask(context, socket, sockaddr).execute();
             } else {
                 Log.i("JSON","Connection Aborted");
