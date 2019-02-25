@@ -1,5 +1,7 @@
 package com.example.neetx.controllertest;
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -11,7 +13,16 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
+import android.widget.EditText;
+import android.widget.LinearLayout;
 import android.widget.Toast;
+
+import org.apache.commons.codec.BinaryDecoder;
+import org.apache.commons.codec.binary.BinaryCodec;
+import org.apache.commons.codec.binary.Hex;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
@@ -22,12 +33,15 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintWriter;
+import java.io.UnsupportedEncodingException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.BitSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -35,25 +49,61 @@ import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 
+import static android.os.SystemClock.sleep;
+
 
 public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
         setContentView(new MyView(this));
         ((MyApplication) this.getApplication()).setFinished(true);
         ((MyApplication) this.getApplication()).setChance(0);
 
         StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
         StrictMode.setThreadPolicy(policy);
+
+        /* CONNECTION DIALOG Todo: Make a button for this and catch user errors */
+        LinearLayout ll = new LinearLayout(this);
+
+        final EditText txtip = new EditText(this);
+        final EditText txtport = new EditText(this);
+        txtip.setText("192.168.43.57");
+        txtport.setText("80");
+
+        ll.addView(txtip);
+        ll.addView(txtport);
+
+        new AlertDialog.Builder(this)
+                .setTitle("Target Setup")
+                .setMessage("Please insert IP and PORT.")
+                .setView(ll)
+                .setPositiveButton("Okay", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int whichButton) {
+                        String ip = txtip.getText().toString();
+                        String port = txtport.getText().toString();
+                        Log.i("DIALOG", ip);
+                        Log.i("DIALOG", port);
+                        SocketAddress sockaddr = new InetSocketAddress(ip, Integer.parseInt(port));
+                        Socket socket = new Socket();
+                        MyView.senderObj.setConnection(sockaddr, socket);
+                    }
+                })
+                .setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int whichButton) {
+                    }
+                })
+                .show();
+        /* CONNECTION BUTTON END*/
     }
 
-    public class MyView extends View
+    public static class MyView extends View
     {
-        final SocketAddress sockaddr = new InetSocketAddress("192.168.43.57", 80);
-        final Socket socket = new Socket();
-        Sender senderObj = new Sender(sockaddr, socket);
+        private static SocketAddress sockaddr = new InetSocketAddress("192.168.43.57", 80);
+        private static Socket socket =  new Socket();
+        public static Sender senderObj = new Sender(sockaddr, socket);
         Paint paint = null;
         private Context _context;
 
@@ -61,6 +111,7 @@ public class MainActivity extends AppCompatActivity {
         Circle shooter = new Circle();
         Circle analog = new Circle();
         Circle check = new Circle();
+        Circle setup = new Circle();
 
         List<Boolean> events = new ArrayList<Boolean>();
         long time = System.currentTimeMillis();
@@ -89,16 +140,19 @@ public class MainActivity extends AppCompatActivity {
         {
             mcanvas = canvas;
             super.onDraw(mcanvas);
+
             int x = getWidth();
             int y = getHeight();
+
             controller.setRadius(y/2);
             shooter.setRadius(y/6);
             analog.setRadius(controller.getRadius()/6);
             check.setRadius(y/10);
+            setup.setRadius(y/10);
+
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(Color.DKGRAY);
             mcanvas.drawPaint(paint);
-
             paint.setColor(Color.parseColor("#CD5C5C"));
 
             controller.setCenterX((x-(x/4)));
@@ -113,10 +167,14 @@ public class MainActivity extends AppCompatActivity {
             check.setCenterX(x/11);
             check.setCenterY(y/7);
 
+            setup.setCenterX(x/4);
+            setup.setCenterY(y/7);
+
             mcanvas.drawCircle((float)controller.getCenterX(), (float)controller.getCenterY(), (float) controller.getRadius(), paint);
             mcanvas.drawCircle((float)shooter.getCenterX(),(float) shooter.getCenterY(), (float)shooter.getRadius(), paint);
             paint.setColor((Color.BLUE));
             mcanvas.drawCircle((float)check.getCenterX(), (float) check.getCenterY(), (float) check.getRadius(), paint);
+            mcanvas.drawCircle((float)setup.getCenterX(), (float) setup.getCenterY(), (float) setup.getRadius(), paint);
             paint.setColor(Color.rgb(87,87,87) );
             if(start){
                 mPivotX = (float) analog.getCenterX();
@@ -129,6 +187,7 @@ public class MainActivity extends AppCompatActivity {
             mcanvas.drawText("Shoot", (float) shooter.getCenterX()- (float) shooter.getRadius()/2, (float) shooter.getCenterY()+25, paint);
             paint.setTextSize(35);
             mcanvas.drawText("Check", (float) check.getCenterX()- (float) check.getRadius()/2, (float) check.getCenterY()+15, paint);
+            mcanvas.drawText("Setup", (float) setup.getCenterX()- (float) setup.getRadius()/2, (float) setup.getCenterY()+15, paint);
         }
 
         @Override
@@ -150,15 +209,48 @@ public class MainActivity extends AppCompatActivity {
                     }else if(shooter.checkDistance(x, y)) {
                         //Log.i("DOWN_shooter", "SHOOT SIGNAL");
                         senderObj.sendShoot();
-                    }else if(check.checkDistance(x, y)) {
+                    }else if(check.checkDistance(x, y)){
                         //Log.i("VARIABLE", String.valueOf(((MyApplication) _context.getApplicationContext()).getFinished()));
-                        if (((MyApplication) _context.getApplicationContext()).getFinished() || ((MyApplication) _context.getApplicationContext()).getChance() >= 1) {
+                        if (((MyApplication) _context.getApplicationContext()).getFinished() || ((MyApplication) _context.getApplicationContext()).getChance() <= 1) {
                             ((MyApplication) _context.getApplicationContext()).setFinished(false);
                             ((MyApplication) _context.getApplicationContext()).setDelay(System.currentTimeMillis());
                             senderObj.sendCheck(this._context);
                         } else {
                             //Log.i("RESPONSE", "BLOCKED");
                         }
+                    }else if(setup.checkDistance(x, y)){
+                        /* CONNECTION DIALOG Todo: Catch user errors */
+                        LinearLayout ll = new LinearLayout(this._context);
+
+                        final EditText txtip = new EditText(this._context);
+                        final EditText txtport = new EditText(this._context);
+                        txtip.setText("192.168.43.57");
+                        txtport.setText("80");
+
+                        ll.addView(txtip);
+                        ll.addView(txtport);
+
+                        new AlertDialog.Builder(this._context)
+                                .setTitle("Target Setup")
+                                .setMessage("Please insert IP and PORT.")
+                                .setView(ll)
+                                .setPositiveButton("Okay", new DialogInterface.OnClickListener() {
+                                    public void onClick(DialogInterface dialog, int whichButton) {
+                                        String ip = txtip.getText().toString();
+                                        String port = txtport.getText().toString();
+                                        Log.i("DIALOG", ip);
+                                        Log.i("DIALOG", port);
+                                        SocketAddress sockaddr = new InetSocketAddress(ip, Integer.parseInt(port));
+                                        Socket socket = new Socket();
+                                        MyView.senderObj.setConnection(sockaddr, socket);
+                                    }
+                                })
+                                .setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+                                    public void onClick(DialogInterface dialog, int whichButton) {
+                                    }
+                                })
+                                .show();
+                        /* CONNECTION BUTTON END*/
                     }
                     return true;
                 case (MotionEvent.ACTION_MOVE):
@@ -171,12 +263,16 @@ public class MainActivity extends AppCompatActivity {
                             time = System.currentTimeMillis();
                         }
                     }else if(shooter.checkDistance(x, y)) {
-                        events.add(true);
-                        senderObj.sendShoot();
-                    } else {
+                        if(System.currentTimeMillis() >= time+200) {
+                            events.add(true);
+                            senderObj.sendShoot();
+                            time = System.currentTimeMillis();
+                            }
+                        } else {
                         if(events.contains(true)){
                             //Log.i("SIGNAL","STOP EXCEPTION");
                             this.myDrawCircle((int) controller.getCenterX(), (int) controller.getCenterY());
+                            sleep(100);
                             senderObj.sendStop();
                             events.clear();
                         }
@@ -280,46 +376,122 @@ class Point{
 class Sender {
     private SocketAddress sockaddr;
     private Socket socket;
+    public byte[] mykey = Encryptor.hexStringToByteArray("feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308");
+    public byte [] iv = Encryptor.hexStringToByteArray("cafebabefacedbaddecaf888");
+    public Encryptor enc = new Encryptor(mykey);
 
     Sender(SocketAddress sockaddr, Socket socket) {
         this.sockaddr = sockaddr;
-        this.socket = socket;;
+        this.socket = socket;
+    }
+
+    void setConnection(SocketAddress sockaddr, Socket socket){
+        try {
+            this.socket.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        this.sockaddr = sockaddr;
+        this.socket = socket;
     }
 
     void sendShoot(){
+        //String param = "{\"CMD\":\"Shoot\",\"Params\":\"null\",\"Resp\":\"false\"}";
+        //String param = "AA";
+        byte[] hex_param = { 0b0000, 0b0000 };
+        Log.i("CRYPTO","SHOOT");
+        try {
+            Log.i("MOVETEST", Arrays.toString(hex_param));
+            //hex_param = param.getBytes("UTF-8");
+            byte [] encryptedString = enc.encrypt(hex_param, iv);
 
-        new SenderTask("{\"CMD\":\"Shoot\",\"Params\":\"null\",\"Resp\":\"false\"}", socket, sockaddr).execute();
+            new SenderTask(encryptedString, socket, sockaddr).execute();
+
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        //new SenderTask("{\"CMD\":\"Shoot\",\"Params\":\"null\",\"Resp\":\"false\"}", socket, sockaddr).execute();
     }
 
     void sendStop(){
-        new SenderTask("{\"CMD\":\"Stop\",\"Params\":\"null\",\"Resp\":\"false\"}", socket, sockaddr).execute();
+        String param = "{\"CMD\":\"Stop\",\"Params\":\"null\",\"Resp\":\"false\"}";
+        byte[] hex_param = {0b1100, 0b0000};
+        Log.i("CRYPTO","STOP");
+
+        try {
+            Log.i("MOVETEST", Arrays.toString(hex_param));
+            //hex_param = param.getBytes("UTF-8");
+            byte [] encryptedString = enc.encrypt(hex_param, iv);
+            new SenderTask(encryptedString, socket, sockaddr).execute();
+
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        //new SenderTask("{\"CMD\":\"Stop\",\"Params\":\"null\",\"Resp\":\"false\"}", socket, sockaddr).execute();
     }
 
     void sendCheck(Context _context){
-       new SenderTask("{\"CMD\":\"Check\",\"Params\":\"null\",\"Resp\":\"true\"}", socket, sockaddr).execute();//.get(1000, java.util.concurrent.TimeUnit.MILLISECONDS);
+        String param = "{\"CMD\":\"Check\",\"Params\":\"null\",\"Resp\":\"true\"}";
+        byte[] hex_param = {0b1010,0b0000};
+        Log.i("CRYPTO","CHECK");
+
+        try {
+            Log.i("MOVETEST", Arrays.toString(hex_param));
+            //hex_param = param.getBytes("UTF-8");
+            byte [] encryptedString = enc.encrypt(hex_param, iv);
+            new SenderTask(encryptedString, socket, sockaddr).execute();
+
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+       //new SenderTask("{\"CMD\":\"Check\",\"Params\":\"null\",\"Resp\":\"true\"}", socket, sockaddr).execute();//.get(1000, java.util.concurrent.TimeUnit.MILLISECONDS);
        new ReaderTask(_context, socket, sockaddr).execute();//.get(3000, TimeUnit.MILLISECONDS);
     }
 
     void sendCommand(Double angle, Double radius){
-        String str = "{\"CMD\":\"Move\",\"Params\":\"{'R':'"+String.format(Locale.getDefault(),"%.2f", radius)+"','A':'"+String.format(Locale.getDefault(),"%.2f", angle)+"'}\",\"Resp\":\"false\"}";
+        String param = "{\"CMD\":\"Move\",\"Params\":\"{'R':'"+String.format(Locale.getDefault(),"%.2f", radius)+"','A':'"+String.format(Locale.getDefault(),"%.2f", angle)+"'}\",\"Resp\":\"false\"}";
+        byte[] hex_param = {0b0101, (byte) (int) Math.floor(angle/2)};
+        Log.i("CRYPTO","MOVE");
+
+        Log.i("MOVETEST", Arrays.toString(hex_param));
+        Log.i("MOVETEST", String.valueOf(angle));
+        try {
+            //hex_param = param.getBytes("UTF-8");
+            byte [] encryptedString = enc.encrypt(hex_param, iv);
+            new SenderTask(encryptedString, socket, sockaddr).execute();
+
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
         //String str = "R"+String.format(Locale.getDefault(),"%.2f", radius)+"A"+String.format(Locale.getDefault(),"%.2f", angle);
         //Log.i("str",str);
-        new SenderTask(str, socket, sockaddr).execute();
+        //new SenderTask(str, socket, sockaddr).execute();
     }
 }
 
-class SenderTask extends AsyncTask<String, Void, String> {
-    String param;
+//class SenderTask extends AsyncTask<String, Void, String> {
+class SenderTask extends AsyncTask<byte[], Void, String> {
+
+    byte[] param;
     Socket socket;
     SocketAddress sockaddr;
-    SenderTask(String param, Socket socket, SocketAddress sockaddr){
+    SenderTask(byte[] param, Socket socket, SocketAddress sockaddr){
         super();
         this.param = param;
         this.socket = socket;
         this.sockaddr = sockaddr;
     }
     @Override
-    protected String doInBackground(String... params) {
+    protected String doInBackground(byte[]... params) {
         //Log.i("RESPONSE","STO QUA");
         String response = "";
         try {
@@ -332,9 +504,14 @@ class SenderTask extends AsyncTask<String, Void, String> {
                 Log.i("RESPONSE", "RICONNESSO");
             }
             OutputStream out = socket.getOutputStream();
-            Log.i("JSON",param);
-            param += "\r\n";
-            out.write(param.getBytes());
+            byte[] carriage_newline = {'>', '>', 0xD,0xA};
+            byte[] output = Encryptor.concatenateByteArrays(param,carriage_newline);
+            Log.i("CRYPTO", String.valueOf(output.length));
+            Log.i("CRYPTO", String.valueOf(Hex.encodeHex(output)));
+            out.write(output);
+            //Log.i("JSON",param);
+            //param += "\r\n";
+            //out.write(param.getBytes());
         } catch (UnknownHostException e) {
             e.printStackTrace();
         } catch (IOException e) {
@@ -378,7 +555,7 @@ class ReaderTask extends AsyncTask<Context, Void, Map<String,Object>> {
             }
             this.socket.setSoTimeout(200);
 
-            int size = 25;
+            int size = 100;
             ByteArrayOutputStream bout = new ByteArrayOutputStream(size);
             byte [] buffer = new byte[size];
             int bytesRead;
@@ -422,36 +599,45 @@ class ReaderTask extends AsyncTask<Context, Void, Map<String,Object>> {
             Log.i("JSON", "OKAY");
             long delay =  System.currentTimeMillis() - ((MyApplication)context.getApplicationContext()).getDelay();
             //Log.i("DELAY", String.valueOf(delay));
-            Toast toast = Toast.makeText((Context) result.get("Context"), (String) result.get("Response") + "Milliseconds: " + delay, Toast.LENGTH_LONG);
-            toast.show();
+            try {
+                JSONObject obj = new JSONObject(result.get("Response").toString());
+                Toast toast = Toast.makeText((Context) result.get("Context"), (String) obj.getString("resp") + "\nMilliseconds: " + delay, Toast.LENGTH_LONG);
+                toast.show();
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
             ((MyApplication)context.getApplicationContext()).setDelay(0);
             ((MyApplication)context.getApplicationContext()).setFinished(true);
             ((MyApplication)context.getApplicationContext()).setChance(0);
         }else{
             Log.i("JSON", "NADA");
-            // ((MyApplication)context.getApplicationContext()).setChance(((MyApplication)context.getApplicationContext()).getChance()+1);
-            try {
+            if(((MyApplication)context.getApplicationContext()).getChance() <= 1) {
+                try {
 
-                int size = 6;
-                ByteArrayOutputStream bout = new ByteArrayOutputStream(size);
-                byte [] buffer = new byte[size];
-                int bytesRead;
-                bout.reset();
-                InputStream in = socket.getInputStream();
-                String response = "";
-                while((bytesRead = in.read(buffer)) != -1){
-                    bout.write(buffer, 0, bytesRead);
-                    response += bout.toString("UTF-8");
-                    if(response.endsWith("\n")){
-                        break;
+                    int size = 100;
+                    ByteArrayOutputStream bout = new ByteArrayOutputStream(size);
+                    byte[] buffer = new byte[size];
+                    int bytesRead;
+                    bout.reset();
+                    InputStream in = socket.getInputStream();
+                    String response = "";
+                    while ((bytesRead = in.read(buffer)) != -1) {
+                        bout.write(buffer, 0, bytesRead);
+                        response += bout.toString("UTF-8");
+                        if (response.endsWith("\n")) {
+                            break;
+                        }
                     }
+                } catch (IOException e) {
+                    e.printStackTrace();
                 }
-            } catch (IOException e) {
-                e.printStackTrace();
+                ((MyApplication) context.getApplicationContext()).setChance(((MyApplication) context.getApplicationContext()).getChance() + 1);
+                //new SenderTask("{\"CMD\":\"Check\",\"Params\":\"null\",\"Resp\":\"true\"}", socket, sockaddr).execute();
+                new ReaderTask(context, socket, sockaddr).execute();
+            } else {
+                Log.i("JSON","Connection Aborted");
+                ((MyApplication)context.getApplicationContext()).setChance(0);
             }
-
-            new SenderTask("{\"CMD\":\"Check\",\"Params\":\"null\",\"Resp\":\"true\"}", socket, sockaddr).execute();
-            new ReaderTask(context, socket, sockaddr).execute();
         }
     }
 
