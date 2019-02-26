@@ -39,6 +39,7 @@ import java.net.Socket;
 import java.net.SocketAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
@@ -64,6 +65,14 @@ public class MainActivity extends AppCompatActivity {
 
         StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
         StrictMode.setThreadPolicy(policy);
+
+        Bundle bundle = getIntent().getExtras();
+        byte[] key = bundle.getByteArray("key");
+        byte[] iv = bundle.getByteArray("iv");
+
+        ((MyApplication) this.getApplication()).setKey(key);
+        ((MyApplication) this.getApplication()).setIv(iv);
+
 
         /* CONNECTION DIALOG Todo: Make a button for this and catch user errors */
         LinearLayout ll = new LinearLayout(this);
@@ -104,6 +113,7 @@ public class MainActivity extends AppCompatActivity {
         private static SocketAddress sockaddr = new InetSocketAddress("192.168.43.57", 80);
         private static Socket socket =  new Socket();
         public static Sender senderObj = new Sender(sockaddr, socket);
+
         Paint paint = null;
         private Context _context;
 
@@ -140,6 +150,8 @@ public class MainActivity extends AppCompatActivity {
         {
             mcanvas = canvas;
             super.onDraw(mcanvas);
+
+            senderObj.setCrypto(((MyApplication) _context.getApplicationContext()).getKey(),((MyApplication) _context.getApplicationContext()).getIv());
 
             int x = getWidth();
             int y = getHeight();
@@ -376,13 +388,21 @@ class Point{
 class Sender {
     private SocketAddress sockaddr;
     private Socket socket;
-    public byte[] mykey = Encryptor.hexStringToByteArray("feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308");
-    public byte [] iv = Encryptor.hexStringToByteArray("cafebabefacedbaddecaf888");
-    public Encryptor enc = new Encryptor(mykey);
+    //public byte[] mykey = Encryptor.hexStringToByteArray("feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308");
+    //public byte [] iv = Encryptor.hexStringToByteArray("cafebabefacedbaddecaf888");
+    private byte[] mykey = new byte[32];
+    private byte[] myiv = new byte[12];
+    public Encryptor enc;
 
     Sender(SocketAddress sockaddr, Socket socket) {
         this.sockaddr = sockaddr;
         this.socket = socket;
+    }
+
+    void setCrypto(byte[] mykey, byte[] myiv){
+        this.mykey = mykey;
+        this.myiv = myiv;
+        enc = new Encryptor(this.mykey, this.myiv);
     }
 
     void setConnection(SocketAddress sockaddr, Socket socket){
@@ -403,7 +423,7 @@ class Sender {
         try {
             Log.i("MOVETEST", Arrays.toString(hex_param));
             //hex_param = param.getBytes("UTF-8");
-            byte [] encryptedString = enc.encrypt(hex_param, iv);
+            byte [] encryptedString = enc.encrypt(hex_param);
 
             new SenderTask(encryptedString, socket, sockaddr).execute();
 
@@ -423,7 +443,7 @@ class Sender {
         try {
             Log.i("MOVETEST", Arrays.toString(hex_param));
             //hex_param = param.getBytes("UTF-8");
-            byte [] encryptedString = enc.encrypt(hex_param, iv);
+            byte [] encryptedString = enc.encrypt(hex_param);
             new SenderTask(encryptedString, socket, sockaddr).execute();
 
         } catch (UnsupportedEncodingException e) {
@@ -442,7 +462,7 @@ class Sender {
         try {
             Log.i("MOVETEST", Arrays.toString(hex_param));
             //hex_param = param.getBytes("UTF-8");
-            byte [] encryptedString = enc.encrypt(hex_param, iv);
+            byte [] encryptedString = enc.encrypt(hex_param);
             new SenderTask(encryptedString, socket, sockaddr).execute();
 
         } catch (UnsupportedEncodingException e) {
@@ -463,7 +483,7 @@ class Sender {
         Log.i("MOVETEST", String.valueOf(angle));
         try {
             //hex_param = param.getBytes("UTF-8");
-            byte [] encryptedString = enc.encrypt(hex_param, iv);
+            byte [] encryptedString = enc.encrypt(hex_param);
             new SenderTask(encryptedString, socket, sockaddr).execute();
 
         } catch (UnsupportedEncodingException e) {

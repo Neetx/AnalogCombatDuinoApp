@@ -8,23 +8,29 @@ import javax.crypto.spec.SecretKeySpec;
 
 class Encryptor {
     Key key;
+    GCMParameterSpec ivSpec;
+    byte[] iv = new byte[12];
 
-    Encryptor(byte[] key) {
+    Encryptor(byte[] key, byte[] iv) {
         if (key.length != 32) throw new IllegalArgumentException();
         this.key = new SecretKeySpec(key, "AES");
+        assert iv.length == 12;
+        this.iv = iv;
+        this.ivSpec = new GCMParameterSpec(16 * Byte.SIZE, iv);
     }
 
-    byte[] encrypt(byte[] src, byte[] iv) throws Exception {
-        GCMParameterSpec ivSpec = new GCMParameterSpec(16 * Byte.SIZE, iv);
+    Encryptor(){};
+
+    byte[] encrypt(byte[] src) throws Exception {
+        //GCMParameterSpec ivSpec = new GCMParameterSpec(16 * Byte.SIZE, iv);
         //IvParameterSpec ivSpec = new IvParameterSpec(iv);
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-        cipher.init(Cipher.ENCRYPT_MODE, key, ivSpec);
-        assert iv.length == 12;
+        cipher.init(Cipher.ENCRYPT_MODE, key, this.ivSpec);
         byte[] cipherText = cipher.doFinal(src);
         //System.out.println( javax.xml.bind.DatatypeConverter.printHexBinary(cipherText));
         assert cipherText.length == src.length + 16; // See question #3
         byte[] message = new byte[12 + src.length + 16]; // See question #4
-        System.arraycopy(iv, 0, message, 0, 12);
+        System.arraycopy(this.iv, 0, message, 0, 12);
         System.arraycopy(cipherText, 0, message, 12, cipherText.length);
         return message;
     }

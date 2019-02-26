@@ -6,6 +6,8 @@ public class MyApplication extends Application {
     private boolean finished;
     private int chance;
     private long delay;
+    private byte[] key = new byte[32];
+    private byte[] iv = new byte[12];
 
 
     public boolean getFinished() {
@@ -31,4 +33,12 @@ public class MyApplication extends Application {
     public void setDelay(long delay){
         this.delay = delay;
     }
+
+    public void setKey(byte[] key){ this.key = key; }
+
+    public byte[] getKey (){ return this.key; }
+
+    public void setIv(byte[] iv){ this.iv = iv; }
+
+    public byte[] getIv(){ return this.iv; }
 }
